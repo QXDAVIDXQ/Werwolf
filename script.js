@@ -57,9 +57,11 @@ let state = {
   ereignis: null,
   wildeKindMentor: null,
   wolfshundTeam: null,
-  alteLeben: {}, // pro Spieler
+  alteLeben: {},
   ritterGetötet: false,
-  ritterTöter: null
+  ritterTöter: null,
+  engelImSpiel: false,
+  erstePhaseIstTag: false
 };
 
 // ===== DOM-Referenzen =====
@@ -153,6 +155,15 @@ function starteSpiel() {
     state.spielerNamen.push(document.getElementById(`name-${i}`)?.value || `Spieler ${i}`);
   }
 
+  // Prüfen, ob Engel dabei ist
+  state.engelImSpiel = false;
+  for (const rolle in state.rollenVerteilung) {
+    if (rolle === 'engel' && state.rollenVerteilung[rolle] > 0) {
+      state.engelImSpiel = true;
+      break;
+    }
+  }
+
   // Rollenliste erstellen
   let rollenListe = [];
   for (const rolleKey in state.rollenVerteilung) {
@@ -206,6 +217,8 @@ function starteSpiel() {
   state.wolfshundTeam = null;
   state.ritterGetötet = false;
   state.ritterTöter = null;
+  state.erstePhaseIstTag = state.engelImSpiel; // 🔥 WICHTIG!
+
   zeigeNaechsteRolle(0);
 }
 
@@ -214,8 +227,14 @@ function zeigeNaechsteRolle(index) {
   if (index >= state.spieler.length) {
     el.phaseRollen.classList.remove('active');
     el.phaseSpiel.classList.add('active');
-    state.phase = 'nacht';
-    starteNachtPhase();
+    state.phase = 'spiel';
+
+    // 🔥 ENGEL: Sofort Tag 1 starten!
+    if (state.erstePhaseIstTag) {
+      starteTagPhase();
+    } else {
+      starteNachtPhase();
+    }
     return;
   }
 
@@ -324,7 +343,7 @@ function starteNachtPhase() {
     html += `</select></div>`;
   }
 
-  // Großer Wolf (jede Nacht, solange kein Werwolf tot)
+  // Großer Wolf (solange kein Werwolf tot)
   const lebendeWerwoelfe = state.spieler.filter(p => p.lebend && ['werwolf','urwolf','grosser_wolf'].includes(p.rolle));
   if (lebendeWerwoelfe.length > 0) {
     const gw = state.spieler.find(p => p.lebend && p.rolle === 'grosser_wolf');
@@ -381,7 +400,7 @@ function starteNachtPhase() {
   }
 
   el.spielInhalt.innerHTML = html;
-  el.btnSpielWeiter.classList.add('hidden');
+  el.btnSpielWeiter.classList.remove('hidden'); // 🔥 IMMER sichtbar!
 
   // Seherin-Button
   document.getElementById('btn-seherin-pruefen')?.addEventListener('click', () => {
@@ -389,9 +408,15 @@ function starteNachtPhase() {
     if (zielId) {
       const ziel = state.spieler.find(p => p.id === parseInt(zielId));
       if (ziel) {
+        // 🔥 Neumond: "Nebel" → nur Gut/Böse
+        let info = ziel.rolleName;
+        if (state.ereignis === "Nebel") {
+          const team = ['werwolf','urwolf','grosser_wolf','weisser_wolf'].includes(ziel.rolle) ? 'böse' : 'gut';
+          info = `${ziel.name} ist ${team}`;
+        }
         el.phaseSpiel.classList.remove('active');
         el.phaseSeherin.classList.add('active');
-        el.seherinText.textContent = `${ziel.name} ist ${ziel.rolleName}`;
+        el.seherinText.textContent = info;
         el.btnSeherinWeiter.onclick = () => {
           el.phaseSeherin.classList.remove('active');
           el.phaseSpiel.classList.add('active');
@@ -762,7 +787,9 @@ function neuesSpiel() {
     wolfshundTeam: null,
     alteLeben: {},
     ritterGetötet: false,
-    ritterTöter: null
+    ritterTöter: null,
+    engelImSpiel: false,
+    erstePhaseIstTag: false
   };
   el.phaseSpiel.classList.remove('active');
   el.phaseSetup.classList.add('active');
