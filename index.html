@@ -160,9 +160,95 @@ function startSpiel() {
   });
 
   // Spiel starten
+  <script>
+// ... (dein bestehender Code bis zu startSpiel bleibt gleich)
+
+// START SPIEL – aktualisiert
+function startSpiel() {
+  const n = parseInt(document.getElementById('ziel').textContent);
+  
+  // Namen sammeln
+  spieler = [];
+  let id = 1;
+  for (let i = 1; i <= n; i++) {
+    const name = document.getElementById(`p${i}`)?.value || `Spieler ${i}`;
+    // Finde die passende Rollen-Beschreibung für Anzeige
+    const rolleObj = rollenListe.find(r => r.id === getRolleById(id));
+    const rolleName = rolleObj ? rolleObj.name : "Unbekannt";
+    spieler.push({ id, name, lebend: true, rolle: getRolleById(id), rolleName });
+    id++;
+  }
+
+  // Spiel starten
   document.getElementById('setup').classList.remove('active');
   document.getElementById('spiel').classList.add('active');
-  naechstePhase('nacht');
+  
+  // 🔥 NEU: Zuerst Rollen verteilen!
+  aktuellerSpielerIndex = 0;
+  zeigeRollenPhase();
+}
+
+// Hilfsfunktion: Welche Rolle hat Spieler mit ID?
+let rollenZuweisung = [];
+function getRolleById(id) {
+  // Rollen zuweisen (wie vorher, aber speichern)
+  if (rollenZuweisung.length === 0) {
+    let idx = 0;
+    rollenListe.forEach(r => {
+      for (let i = 0; i < r.count; i++) {
+        if (r.size === 2) {
+          if (idx < spieler.length) rollenZuweisung.push(r.id);
+          if (idx < spieler.length) rollenZuweisung.push(r.id);
+          idx += 2;
+        } else {
+          if (idx < spieler.length) rollenZuweisung.push(r.id);
+          idx++;
+        }
+      }
+    });
+  }
+  return rollenZuweisung[id - 1] || 'dorfbewohner';
+}
+
+// 🔥 NEUE PHASE: Rollen geheim anzeigen
+let aktuellerSpielerIndex = 0;
+
+function zeigeRollenPhase() {
+  if (aktuellerSpielerIndex >= spieler.length) {
+    // Alle haben ihre Rolle gesehen → Nacht 1 starten
+    aktuelleNacht = 1;
+    naechstePhase('nacht');
+    return;
+  }
+
+  const spielerAktuell = spieler[aktuellerSpielerIndex];
+  document.getElementById('phaseTitel').textContent = `Deine Rolle`;
+  
+  let html = `<h3>${spielerAktuell.name}</h3>`;
+  html += `<p>Drücke auf „Anzeigen“, um deine Rolle zu sehen.</p>`;
+  html += `<button id="btn-anzeigen">anzeigen</button>`;
+  html += `<div id="rolle-anzeige" style="margin-top:15px; padding:10px; background:#f5f5f5; display:none;"></div>`;
+  html += `<button id="btn-weiter" style="display:none; margin-top:10px;">Weiter (Rolle gesehen)</button>`;
+
+  document.getElementById('inhalt').innerHTML = html;
+  document.getElementById('weiter').style.display = 'none';
+
+  // Anzeigen-Button
+  document.getElementById('btn-anzeigen').onclick = () => {
+    document.getElementById('rolle-anzeige').textContent = `Du bist: ${spielerAktuell.rolleName}`;
+    document.getElementById('rolle-anzeige').style.display = 'block';
+    document.getElementById('btn-weiter').style.display = 'inline-block';
+  };
+
+  // Weiter-Button
+  document.getElementById('btn-weiter').onclick = () => {
+    aktuellerSpielerIndex++;
+    zeigeRollenPhase();
+  };
+}
+
+// ... (der Rest deines Codes – naechstePhase, hinrichten, etc. – bleibt gleich)
+</script>
 }
 
 // ===== SPIELPHASEN =====
