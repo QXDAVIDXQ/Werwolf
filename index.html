@@ -2,19 +2,44 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>🐺 Werwölfe – Einfache Version</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🐺 Werwölfe von Düsterwald – Vollversion</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 15px; background: #fdf6e3; }
-    .section { background: white; padding: 15px; margin: 15px 0; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-    input, button, select { padding: 8px; margin: 5px; font-size: 15px; }
-    button { background: #2e7d32; color: white; border: none; border-radius: 4px; cursor: pointer; }
-    button:disabled { background: #bdbdbd; cursor: not-allowed; }
-    .rolle { display: inline-block; margin: 5px; padding: 8px; background: #e8f5e8; border: 1px solid #4caf50; border-radius: 4px; cursor: pointer; }
-    .rolle.active { background: #c8e6c9; font-weight: bold; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      max-width: 900px; margin: 0 auto; padding: 15px;
+      background: #fdf9f0; color: #333;
+    }
+    .section {
+      background: white; padding: 16px; margin: 16px 0;
+      border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+    }
+    h1, h2, h3 { color: #5d4037; }
+    input, button, select {
+      padding: 9px; margin: 6px; font-size: 15px;
+      border: 1px solid #ccc; border-radius: 6px;
+    }
+    button {
+      background: #388e3c; color: white; border: none;
+      cursor: pointer; font-weight: bold;
+    }
+    button:hover:not(:disabled) { background: #2e7d32; }
+    button:disabled {
+      background: #bdbdbd; cursor: not-allowed;
+    }
+    button.danger { background: #d32f2f; }
+    .rolle-btn {
+      display: inline-block; margin: 5px; padding: 10px;
+      background: #f1f8e9; border: 1px solid #8bc34a;
+      border-radius: 6px; cursor: pointer; min-width: 180px;
+    }
+    .rolle-btn.active { background: #dcedc8; font-weight: bold; }
     .phase { display: none; }
     .phase.active { display: block; }
-    .spieler { display: inline-block; margin: 4px; padding: 6px; background: #e3f2fd; border-radius: 4px; }
-    .tot { opacity: 0.5; text-decoration: line-through; }
+    .spieler-item { margin: 4px 0; }
+    .hidden { display: none; }
+    .info { background: #e3f2fd; padding: 10px; border-radius: 6px; margin: 10px 0; }
   </style>
 </head>
 <body>
@@ -22,354 +47,454 @@
 <h1>🐺 Werwölfe von Düsterwald</h1>
 
 <!-- SETUP -->
-<div id="setup" class="phase active">
+<div id="phase-setup" class="phase active">
   <div class="section">
-    <h2>1. Spielerzahl (6–24)</h2>
-    <input type="number" id="anzahl" min="6" max="24" value="8">
+    <h2>1. Spielerzahl (6–48)</h2>
+    <input type="number" id="spielerzahl" min="6" max="48" value="8" />
   </div>
 
   <div class="section">
     <h2>2. Namen eingeben</h2>
-    <div id="namen"></div>
+    <div id="namen-liste"></div>
   </div>
 
   <div class="section">
     <h2>3. Rollen auswählen</h2>
     <p>Gesamt: <span id="gesamt">0</span> / <span id="ziel">8</span></p>
-    <div id="rollen"></div>
+    <div id="rollen-buttons"></div>
   </div>
 
-  <button id="start" disabled>▶️ Spiel starten</button>
+  <button id="btn-start" disabled>▶️ Spiel starten</button>
 </div>
 
-<!-- SPIEL -->
-<div id="spiel" class="phase">
+<!-- ROLLEN ANZEIGEN -->
+<div id="phase-rollen" class="phase">
   <div class="section">
-    <h2 id="phaseTitel">Nacht 1</h2>
-    <div id="inhalt"></div>
-    <button id="weiter" style="display:none;">Weiter</button>
+    <h2 id="rolle-titel">Deine Rolle</h2>
+    <div id="rolle-inhalt"></div>
+    <button id="btn-rolle-weiter" class="hidden">Weiter</button>
+  </div>
+</div>
+
+<!-- SPIEL (NACHT/TAG) -->
+<div id="phase-spiel" class="phase">
+  <div class="section">
+    <h2 id="spiel-titel">Nacht 1</h2>
+    <div id="spiel-inhalt"></div>
+    <button id="btn-spiel-weiter" class="hidden">Weiter</button>
   </div>
 
   <div class="section">
     <h3>Lebende Spieler</h3>
-    <div id="lebende"></div>
+    <div id="lebende-liste"></div>
   </div>
 </div>
 
 <script>
-// ===== ROLLEN (nur die von dir genannten) =====
-const rollenListe = [
-  { id: 'werwolf', name: 'Einfache Werwölfe', count: 0, size: 1 },
-  { id: 'urwolf', name: 'Der Urwolf', count: 0, size: 1 },
-  { id: 'grosser_wolf', name: 'Der große, böse Wolf', count: 0, size: 1 },
-  { id: 'dorfbewohner', name: 'Einfache Dorfbewohner', count: 0, size: 1 },
-  { id: 'amor', name: 'Amor', count: 0, size: 1 },
-  { id: 'seherin', name: 'Die Seherin', count: 0, size: 1 },
-  { id: 'schwestern', name: 'Die zwei Schwestern', count: 0, size: 2 }, // zählt als 2!
-  { id: 'maedchen', name: 'Das kleine Mädchen', count: 0, size: 1 },
-  { id: 'fuchs', name: 'Der Fuchs', count: 0, size: 1 },
-  { id: 'ritter', name: 'Der Ritter', count: 0, size: 1 },
-  { id: 'alte', name: 'Der Alte', count: 0, size: 1 },
-  { id: 'hexe', name: 'Die Hexe', count: 0, size: 1 },
-  { id: 'baer', name: 'Der Bärenführer', count: 0, size: 1 },
-  { id: 'jaeger', name: 'Der Jäger', count: 0, size: 1 },
-  { id: 'wilde_kind', name: 'Das wilde Kind', count: 0, size: 1 },
-  { id: 'wolfshund', name: 'Der Wolfshund', count: 0, size: 1 },
-  { id: 'weisser_wolf', name: 'Der weiße Werwolf', count: 0, size: 1 },
-  { id: 'floete', name: 'Der Flötenspieler', count: 0, size: 1 },
-  { id: 'engel', name: 'Der Engel', count: 0, size: 1 }
-];
+// ===== ROLLEN DEFINITION =====
+const ROLLEN_CONFIG = {
+  werwolf: { name: "Einfache Werwölfe", team: "boese", size: 1 },
+  urwolf: { name: "Der Urwolf", team: "boese", size: 1 },
+  grosser_wolf: { name: "Der große, böse Wolf", team: "boese", size: 1 },
+  dorfbewohner: { name: "Einfache Dorfbewohner", team: "gut", size: 1 },
+  amor: { name: "Amor", team: "neutral_amor", size: 1 },
+  seherin: { name: "Die Seherin", team: "gut", size: 1 },
+  schwestern: { name: "Die zwei Schwestern", team: "gut", size: 2 },
+  maedchen: { name: "Das kleine Mädchen", team: "gut", size: 1 },
+  fuchs: { name: "Der Fuchs", team: "gut", size: 1 },
+  ritter: { name: "Der Ritter der rostigen Klinge", team: "gut", size: 1 },
+  alte: { name: "Der Alte", team: "gut", size: 1 },
+  hexe: { name: "Die Hexe", team: "gut", size: 1 },
+  baer: { name: "Der Bärenführer", team: "gut", size: 1 },
+  jaeger: { name: "Der Jäger", team: "gut", size: 1 },
+  wilde_kind: { name: "Das wilde Kind", team: "gut_zuerst", size: 1 },
+  wolfshund: { name: "Der Wolfshund", team: "neutral_waehlt", size: 1 },
+  weisser_wolf: { name: "Der weiße Werwolf", team: "boese_weiss", size: 1 },
+  floete: { name: "Der Flötenspieler", team: "neutral_floete", size: 1 },
+  engel: { name: "Der Engel", team: "gut", size: 1 }
+};
 
-let spieler = [];
-let aktuelleNacht = 1;
-let werwolfOpfer = null;
-let grosserWolfOpfer = null;
-let maedchenEntdeckt = false;
+// ===== SPIELZUSTAND =====
+let state = {
+  spielerzahl: 8,
+  spieler: [],
+  rollenVerteilung: {},
+  aktuelleNacht: 1,
+  phase: 'setup', // setup, rollen, nacht, tag
+  liebespaar: null,
+  hexeHeil: true,
+  hexeGift: true,
+  wildeKindMentor: null,
+  wolfshundTeam: null,
+  werwolfOpfer: null,
+  grosserWolfOpfer: null,
+  maedchenEntdeckt: false,
+  seherinZiel: null,
+  fuchsGruppe: [],
+  floeteZiel: []
+};
 
-// ===== SETUP =====
-document.getElementById('anzahl').addEventListener('input', updateNamen);
-function updateNamen() {
-  const n = Math.max(6, Math.min(24, parseInt(this.value) || 8));
+// ===== SETUP LOGIK =====
+document.getElementById('spielerzahl').addEventListener('input', updateNamenFelder);
+function updateNamenFelder() {
+  const n = Math.max(6, Math.min(48, parseInt(this.value) || 8));
   this.value = n;
+  state.spielerzahl = n;
   document.getElementById('ziel').textContent = n;
-  
+
   let html = '';
   for (let i = 1; i <= n; i++) {
-    html += `<div><label>Spieler ${i}:</label> <input type="text" id="p${i}" value="Spieler ${i}"></div>`;
+    html += `<div class="spieler-item"><label>Spieler ${i}:</label> <input type="text" id="name-${i}" value="Spieler ${i}"></div>`;
   }
-  document.getElementById('namen').innerHTML = html;
-  updateGesamt();
+  document.getElementById('namen-liste').innerHTML = html;
+  updateGesamtAnzahl();
 }
 
 // Rollen-Buttons
-const rollenDiv = document.getElementById('rollen');
-rollenListe.forEach(rolle => {
-  const div = document.createElement('div');
-  div.className = 'rolle';
-  div.textContent = `${rolle.name} (0)`;
-  div.onclick = () => {
-    rolle.count++;
-    renderRollen();
-    updateGesamt();
+const rollenContainer = document.getElementById('rollen-buttons');
+for (const key in ROLLEN_CONFIG) {
+  const config = ROLLEN_CONFIG[key];
+  const btn = document.createElement('div');
+  btn.className = 'rolle-btn';
+  btn.dataset.rolle = key;
+  btn.textContent = `${config.name} (0)`;
+  btn.onclick = () => {
+    state.rollenVerteilung[key] = (state.rollenVerteilung[key] || 0) + 1;
+    renderRollenButtons();
+    updateGesamtAnzahl();
   };
-  div.dataset.id = rolle.id;
-  rollenDiv.appendChild(div);
-});
-
-function renderRollen() {
-  rollenListe.forEach(rolle => {
-    const div = document.querySelector(`[data-id="${rolle.id}"]`);
-    div.textContent = `${rolle.name} (${rolle.count})`;
-    div.classList.toggle('active', rolle.count > 0);
-  });
+  rollenContainer.appendChild(btn);
 }
 
-function updateGesamt() {
-  const ziel = parseInt(document.getElementById('ziel').textContent);
-  const gesamt = rollenListe.reduce((sum, r) => sum + r.count * r.size, 0);
-  document.getElementById('gesamt').textContent = gesamt;
-  document.getElementById('start').disabled = (gesamt !== ziel);
+function renderRollenButtons() {
+  for (const key in ROLLEN_CONFIG) {
+    const btn = document.querySelector(`[data-rolle="${key}"]`);
+    const count = state.rollenVerteilung[key] || 0;
+    btn.textContent = `${ROLLEN_CONFIG[key].name} (${count})`;
+    btn.classList.toggle('active', count > 0);
+  }
+}
+
+function updateGesamtAnzahl() {
+  let total = 0;
+  for (const key in state.rollenVerteilung) {
+    const count = state.rollenVerteilung[key] || 0;
+    total += count * ROLLEN_CONFIG[key].size;
+  }
+  document.getElementById('gesamt').textContent = total;
+  document.getElementById('btn-start').disabled = (total !== state.spielerzahl);
 }
 
 // Start
-document.getElementById('start').addEventListener('click', startSpiel);
-function startSpiel() {
-  const n = parseInt(document.getElementById('ziel').textContent);
-  
-  // Namen sammeln
-  spieler = [];
-  let id = 1;
-  for (let i = 1; i <= n; i++) {
-    const name = document.getElementById(`p${i}`)?.value || `Spieler ${i}`;
-    spieler.push({ id, name, lebend: true, rolle: null });
-    id++;
+document.getElementById('btn-start').addEventListener('click', starteSpiel);
+
+function starteSpiel() {
+  // Spieler erstellen
+  state.spieler = [];
+  let playerId = 1;
+  for (let i = 1; i <= state.spielerzahl; i++) {
+    const name = document.getElementById(`name-${i}`)?.value || `Spieler ${i}`;
+    state.spieler.push({ id: playerId++, name, lebend: true, rolle: null, rolleName: '' });
   }
 
   // Rollen zuweisen
   let idx = 0;
-  rollenListe.forEach(r => {
-    for (let i = 0; i < r.count; i++) {
-      if (r.size === 2) {
-        // Zwei Schwestern = 2 Spieler
-        if (idx < spieler.length) spieler[idx++].rolle = r.id;
-        if (idx < spieler.length) spieler[idx++].rolle = r.id;
+  for (const rolleKey in state.rollenVerteilung) {
+    const count = state.rollenVerteilung[rolleKey] || 0;
+    for (let i = 0; i < count; i++) {
+      if (ROLLEN_CONFIG[rolleKey].size === 2) {
+        if (idx < state.spieler.length) {
+          state.spieler[idx].rolle = rolleKey;
+          state.spieler[idx].rolleName = ROLLEN_CONFIG[rolleKey].name;
+          idx++;
+        }
+        if (idx < state.spieler.length) {
+          state.spieler[idx].rolle = rolleKey;
+          state.spieler[idx].rolleName = ROLLEN_CONFIG[rolleKey].name;
+          idx++;
+        }
       } else {
-        if (idx < spieler.length) spieler[idx++].rolle = r.id;
-      }
-    }
-  });
-
-  // Spiel starten
-  <script>
-// ... (dein bestehender Code bis zu startSpiel bleibt gleich)
-
-// START SPIEL – aktualisiert
-function startSpiel() {
-  const n = parseInt(document.getElementById('ziel').textContent);
-  
-  // Namen sammeln
-  spieler = [];
-  let id = 1;
-  for (let i = 1; i <= n; i++) {
-    const name = document.getElementById(`p${i}`)?.value || `Spieler ${i}`;
-    // Finde die passende Rollen-Beschreibung für Anzeige
-    const rolleObj = rollenListe.find(r => r.id === getRolleById(id));
-    const rolleName = rolleObj ? rolleObj.name : "Unbekannt";
-    spieler.push({ id, name, lebend: true, rolle: getRolleById(id), rolleName });
-    id++;
-  }
-
-  // Spiel starten
-  document.getElementById('setup').classList.remove('active');
-  document.getElementById('spiel').classList.add('active');
-  
-  // 🔥 NEU: Zuerst Rollen verteilen!
-  aktuellerSpielerIndex = 0;
-  zeigeRollenPhase();
-}
-
-// Hilfsfunktion: Welche Rolle hat Spieler mit ID?
-let rollenZuweisung = [];
-function getRolleById(id) {
-  // Rollen zuweisen (wie vorher, aber speichern)
-  if (rollenZuweisung.length === 0) {
-    let idx = 0;
-    rollenListe.forEach(r => {
-      for (let i = 0; i < r.count; i++) {
-        if (r.size === 2) {
-          if (idx < spieler.length) rollenZuweisung.push(r.id);
-          if (idx < spieler.length) rollenZuweisung.push(r.id);
-          idx += 2;
-        } else {
-          if (idx < spieler.length) rollenZuweisung.push(r.id);
+        if (idx < state.spieler.length) {
+          state.spieler[idx].rolle = rolleKey;
+          state.spieler[idx].rolleName = ROLLEN_CONFIG[rolleKey].name;
           idx++;
         }
       }
-    });
+    }
   }
-  return rollenZuweisung[id - 1] || 'dorfbewohner';
+
+  // Zur Rollen-Phase wechseln
+  document.getElementById('phase-setup').classList.remove('active');
+  document.getElementById('phase-rollen').classList.add('active');
+  state.phase = 'rollen';
+  zeigeNaechsteRolle(0);
 }
 
-// 🔥 NEUE PHASE: Rollen geheim anzeigen
-let aktuellerSpielerIndex = 0;
-
-function zeigeRollenPhase() {
-  if (aktuellerSpielerIndex >= spieler.length) {
-    // Alle haben ihre Rolle gesehen → Nacht 1 starten
-    aktuelleNacht = 1;
-    naechstePhase('nacht');
+// ===== ROLLEN VERTEILEN =====
+function zeigeNaechsteRolle(index) {
+  if (index >= state.spieler.length) {
+    // Alle Rollen verteilt → Nacht 1
+    document.getElementById('phase-rollen').classList.remove('active');
+    document.getElementById('phase-spiel').classList.add('active');
+    state.phase = 'nacht';
+    starteNachtPhase();
     return;
   }
 
-  const spielerAktuell = spieler[aktuellerSpielerIndex];
-  document.getElementById('phaseTitel').textContent = `Deine Rolle`;
-  
-  let html = `<h3>${spielerAktuell.name}</h3>`;
-  html += `<p>Drücke auf „Anzeigen“, um deine Rolle zu sehen.</p>`;
-  html += `<button id="btn-anzeigen">anzeigen</button>`;
-  html += `<div id="rolle-anzeige" style="margin-top:15px; padding:10px; background:#f5f5f5; display:none;"></div>`;
-  html += `<button id="btn-weiter" style="display:none; margin-top:10px;">Weiter (Rolle gesehen)</button>`;
+  const spieler = state.spieler[index];
+  document.getElementById('rolle-titel').textContent = spieler.name;
+  document.getElementById('rolle-inhalt').innerHTML = `
+    <p>Drücke auf „Anzeigen“, um deine Rolle zu sehen.</p>
+    <button id="btn-rolle-anzeigen">anzeigen</button>
+    <div id="rolle-text" class="hidden info"></div>
+  `;
 
-  document.getElementById('inhalt').innerHTML = html;
-  document.getElementById('weiter').style.display = 'none';
+  document.getElementById('btn-rolle-weiter').classList.add('hidden');
 
-  // Anzeigen-Button
-  document.getElementById('btn-anzeigen').onclick = () => {
-    document.getElementById('rolle-anzeige').textContent = `Du bist: ${spielerAktuell.rolleName}`;
-    document.getElementById('rolle-anzeige').style.display = 'block';
-    document.getElementById('btn-weiter').style.display = 'inline-block';
-  };
-
-  // Weiter-Button
-  document.getElementById('btn-weiter').onclick = () => {
-    aktuellerSpielerIndex++;
-    zeigeRollenPhase();
+  document.getElementById('btn-rolle-anzeigen').onclick = () => {
+    document.getElementById('rolle-text').textContent = `Du bist: ${spieler.rolleName}`;
+    document.getElementById('rolle-text').classList.remove('hidden');
+    document.getElementById('btn-rolle-weiter').classList.remove('hidden');
+    document.getElementById('btn-rolle-weiter').onclick = () => zeigeNaechsteRolle(index + 1);
   };
 }
 
-// ... (der Rest deines Codes – naechstePhase, hinrichten, etc. – bleibt gleich)
-</script>
-}
+// ===== NACHTPHASENLOGIK =====
+function starteNachtPhase() {
+  document.getElementById('spiel-titel').textContent = `Nacht ${state.aktuelleNacht}`;
+  let html = `<p><strong>Nacht ${state.aktuelleNacht}</strong></p>`;
 
-// ===== SPIELPHASEN =====
-function naechstePhase(phase) {
-  if (phase === 'nacht') {
-    document.getElementById('phaseTitel').textContent = `Nacht ${aktuelleNacht}`;
-    
-    let html = `<p><strong>Werwölfe:</strong> Wen tötet ihr?</p>`;
-    html += `<select id="opfer1">`;
-    spieler.filter(p => p.lebend).forEach(p => {
+  // === AMOR (nur Nacht 1) ===
+  if (state.aktuelleNacht === 1) {
+    const amor = state.spieler.find(p => p.lebend && p.rolle === 'amor');
+    if (amor) {
+      html += `<h3>Amor</h3><p>Wähle zwei Spieler für das Liebespaar:</p>`;
+      html += `<select id="amor-1">`;
+      state.spieler.forEach(p => {
+        html += `<option value="${p.id}">${p.name}</option>`;
+      });
+      html += `</select> und <select id="amor-2">`;
+      state.spieler.forEach(p => {
+        html += `<option value="${p.id}">${p.name}</option>`;
+      });
+      html += `</select>`;
+    }
+  }
+
+  // === WERWÖLFE ===
+  const werwoelfe = state.spieler.filter(p => p.lebend && ['werwolf', 'urwolf', 'grosser_wolf'].includes(p.rolle));
+  if (werwoelfe.length > 0) {
+    html += `<h3>Werwölfe</h3><p>Wen tötet ihr?</p>`;
+    html += `<select id="werwolf-opfer">`;
+    state.spieler.filter(p => p.lebend).forEach(p => {
       html += `<option value="${p.id}">${p.name}</option>`;
     });
     html += `</select>`;
-
-    // Großer Wolf: jede 2. Nacht
-    if (aktuelleNacht % 2 === 0) {
-      const hatGrossenWolf = spieler.some(p => p.lebend && p.rolle === 'grosser_wolf');
-      if (hatGrossenWolf) {
-        html += `<p><strong>Großer böser Wolf:</strong> Zweites Opfer?</p>`;
-        html += `<select id="opfer2">`;
-        spieler.filter(p => p.lebend).forEach(p => {
-          html += `<option value="${p.id}">${p.name}</option>`;
-        });
-        html += `</select>`;
-      }
-    }
-
-    // Kleines Mädchen
-    const hatMaedchen = spieler.some(p => p.lebend && p.rolle === 'maedchen');
-    if (hatMaedchen) {
-      html += `<p><strong>Nachdem die Werwölfe eingeschlafen sind:</strong><br>
-               Wurde das kleine Mädchen entdeckt?</p>
-               <label><input type="radio" name="maedchen" value="nein" checked> Nein</label>
-               <label><input type="radio" name="maedchen" value="ja"> Ja</label>`;
-    }
-
-    document.getElementById('inhalt').innerHTML = html;
-    document.getElementById('weiter').style.display = 'inline-block';
-    document.getElementById('weiter').onclick = () => {
-      werwolfOpfer = parseInt(document.getElementById('opfer1')?.value || '0');
-      grosserWolfOpfer = parseInt(document.getElementById('opfer2')?.value || '0');
-      maedchenEntdeckt = document.querySelector('input[name="maedchen"]:checked')?.value === 'ja';
-      
-      // Tode anwenden
-      if (werwolfOpfer) {
-        const p = spieler.find(x => x.id === werwolfOpfer);
-        if (p) p.lebend = false;
-      }
-      if (grosserWolfOpfer) {
-        const p = spieler.find(x => x.id === grosserWolfOpfer);
-        if (p) p.lebend = false;
-      }
-      if (maedchenEntdeckt) {
-        const p = spieler.find(x => x.rolle === 'maedchen');
-        if (p) p.lebend = false;
-      }
-
-      naechstePhase('tag');
-    };
   }
 
-  else if (phase === 'tag') {
-    document.getElementById('phaseTitel').textContent = `Tag ${aktuelleNacht}`;
-    
-    const tote = spieler.filter(p => !p.lebend);
-    let html = `<p><strong>Tote der Nacht:</strong> `;
-    if (tote.length > 0) {
-      html += tote.map(p => p.name).join(', ');
-    } else {
-      html += 'Keine.';
+  // === GROSSER WOLF (jede 2. Nacht) ===
+  if (state.aktuelleNacht % 2 === 0) {
+    const grosserWolf = state.spieler.find(p => p.lebend && p.rolle === 'grosser_wolf');
+    if (grosserWolf) {
+      html += `<h3>Großer böser Wolf</h3><p>Zweites Opfer dieser Nacht:</p>`;
+      html += `<select id="grosser-opfer">`;
+      state.spieler.filter(p => p.lebend).forEach(p => {
+        html += `<option value="${p.id}">${p.name}</option>`;
+      });
+      html += `</select>`;
     }
-    html += `</p>`;
+  }
 
-    html += `<p><strong>Hinrichtung:</strong> Wen beschuldigt das Dorf?</p>`;
-    html += `<select id="hinrichtung">`;
-    spieler.filter(p => p.lebend).forEach(p => {
+  // === HEXE ===
+  const hexe = state.spieler.find(p => p.lebend && p.rolle === 'hexe');
+  if (hexe && (state.hexeHeil || state.hexeGift)) {
+    html += `<h3>Die Hexe</h3>`;
+    if (state.hexeHeil) {
+      html += `<label><input type="checkbox" id="hexe-heilen"> Opfer der Werwölfe heilen</label><br>`;
+    }
+    if (state.hexeGift) {
+      html += `Gifttrank: <select id="hexe-gift">`;
+      state.spieler.filter(p => p.lebend).forEach(p => {
+        html += `<option value="${p.id}">${p.name}</option>`;
+      });
+      html += `</select>`;
+    }
+  }
+
+  // === SEHERIN ===
+  const seherin = state.spieler.find(p => p.lebend && p.rolle === 'seherin');
+  if (seherin) {
+    html += `<h3>Die Seherin</h3><p>Wen willst du ausspähen?</p>`;
+    html += `<select id="seherin-ziel">`;
+    state.spieler.filter(p => p.lebend).forEach(p => {
       html += `<option value="${p.id}">${p.name}</option>`;
     });
     html += `</select>`;
-    html += `<button onclick="hinrichten()">Hinrichten</button>`;
-
-    document.getElementById('inhalt').innerHTML = html;
-    document.getElementById('weiter').style.display = 'none';
   }
 
-  renderLebende();
+  // === KLEINES MÄDCHEN ===
+  const maedchen = state.spieler.find(p => p.lebend && p.rolle === 'maedchen');
+  if (maedchen) {
+    html += `<h3>Das kleine Mädchen</h3>`;
+    html += `<p>Nachdem die Werwölfe eingeschlafen sind: Wurde es entdeckt?</p>`;
+    html += `<label><input type="radio" name="maedchen-entdeckt" value="nein" checked> Nein</label> `;
+    html += `<label><input type="radio" name="maedchen-entdeckt" value="ja"> Ja</label>`;
+  }
+
+  document.getElementById('spiel-inhalt').innerHTML = html;
+  document.getElementById('btn-spiel-weiter').classList.remove('hidden');
+  document.getElementById('btn-spiel-weiter').onclick = verarbeiteNachtAktionen;
+  renderLebendeSpieler();
 }
 
-function hinrichten() {
+function verarbeiteNachtAktionen() {
+  // Amor
+  if (state.aktuelleNacht === 1) {
+    const a1 = document.getElementById('amor-1')?.value;
+    const a2 = document.getElementById('amor-2')?.value;
+    if (a1 && a2 && a1 !== a2) {
+      state.liebespaar = [parseInt(a1), parseInt(a2)];
+    }
+  }
+
+  // Werwolf-Opfer
+  const wwOpfer = document.getElementById('werwolf-opfer')?.value;
+  if (wwOpfer) state.werwolfOpfer = parseInt(wwOpfer);
+
+  // Großer Wolf
+  if (state.aktuelleNacht % 2 === 0) {
+    const gwOpfer = document.getElementById('grosser-opfer')?.value;
+    if (gwOpfer) state.grosserWolfOpfer = parseInt(gwOpfer);
+  }
+
+  // Hexe
+  if (document.getElementById('hexe-heilen')?.checked) {
+    state.hexeHeil = false;
+    state.werwolfOpfer = null; // gerettet
+  }
+  const giftOpfer = document.getElementById('hexe-gift')?.value;
+  if (giftOpfer && state.hexeGift) {
+    state.hexeGift = false;
+    const p = state.spieler.find(x => x.id === parseInt(giftOpfer));
+    if (p) p.lebend = false;
+  }
+
+  // Seherin
+  const seherinZiel = document.getElementById('seherin-ziel')?.value;
+  if (seherinZiel) {
+    const ziel = state.spieler.find(p => p.id === parseInt(seherinZiel));
+    if (ziel) {
+      alert(`Die Seherin sieht: ${ziel.rolleName}`);
+    }
+  }
+
+  // Kleines Mädchen
+  state.maedchenEntdeckt = document.querySelector('input[name="maedchen-entdeckt"]:checked')?.value === 'ja';
+  if (state.maedchenEntdeckt) {
+    const m = state.spieler.find(p => p.rolle === 'maedchen');
+    if (m) m.lebend = false;
+  }
+
+  // Opfer anwenden (wenn nicht gerettet)
+  if (state.werwolfOpfer) {
+    const opfer = state.spieler.find(p => p.id === state.werwolfOpfer);
+    if (opfer) opfer.lebend = false;
+  }
+  if (state.grosserWolfOpfer) {
+    const opfer = state.spieler.find(p => p.id === state.grosserWolfOpfer);
+    if (opfer) opfer.lebend = false;
+  }
+
+  // Liebespaar-Tode
+  if (state.liebespaar) {
+    const [a, b] = state.liebespaar;
+    const pA = state.spieler.find(p => p.id === a);
+    const pB = state.spieler.find(p => p.id === b);
+    if (pA && !pA.lebend && pB && pB.lebend) {
+      pB.lebend = false;
+    } else if (pB && !pB.lebend && pA && pA.lebend) {
+      pA.lebend = false;
+    }
+  }
+
+  // Weiter zur Tagphase
+  starteTagPhase();
+}
+
+function starteTagPhase() {
+  document.getElementById('spiel-titel').textContent = `Tag ${state.aktuelleNacht}`;
+  const tote = state.spieler.filter(p => !p.lebend);
+  let html = `<h3>Tote der Nacht</h3>`;
+  if (tote.length > 0) {
+    html += `<p>${tote.map(p => p.name).join(', ')}</p>`;
+  } else {
+    html += `<p>Keine Toten.</p>`;
+  }
+
+  html += `<h3>Hinrichtung</h3>`;
+  html += `<p>Wen beschuldigt das Dorf?</p>`;
+  html += `<select id="hinrichtung">`;
+  state.spieler.filter(p => p.lebend).forEach(p => {
+    html += `<option value="${p.id}">${p.name}</option>`;
+  });
+  html += `</select>`;
+  html += `<button onclick="fuehreHinrichtungAus()">Hinrichten</button>`;
+
+  document.getElementById('spiel-inhalt').innerHTML = html;
+  document.getElementById('btn-spiel-weiter').classList.add('hidden');
+  renderLebendeSpieler();
+}
+
+function fuehreHinrichtungAus() {
   const id = parseInt(document.getElementById('hinrichtung').value);
-  const p = spieler.find(x => x.id === id);
-  if (p) p.lebend = false;
+  const opfer = state.spieler.find(p => p.id === id);
+  if (opfer) opfer.lebend = false;
 
-  // Prüfe Sieg (vereinfacht)
-  const boese = spieler.filter(p => p.lebend && ['werwolf','urwolf','grosser_wolf','weisser_wolf'].includes(p.rolle));
-  const gut = spieler.filter(p => p.lebend && !['werwolf','urwolf','grosser_wolf','weisser_wolf'].includes(p.rolle));
+  // Liebespaar prüfen
+  if (state.liebespaar) {
+    const [a, b] = state.liebespaar;
+    const pA = state.spieler.find(p => p.id === a);
+    const pB = state.spieler.find(p => p.id === b);
+    if (pA && !pA.lebend && pB && pB.lebend) {
+      pB.lebend = false;
+    } else if (pB && !pB.lebend && pA && pA.lebend) {
+      pA.lebend = false;
+    }
+  }
+
+  // Sieg prüfen
+  const boese = state.spieler.filter(p => 
+    p.lebend && 
+    ['werwolf', 'urwolf', 'grosser_wolf', 'weisser_wolf'].includes(p.rolle)
+  );
+  const gut = state.spieler.filter(p => 
+    p.lebend && 
+    !['werwolf', 'urwolf', 'grosser_wolf', 'weisser_wolf'].includes(p.rolle)
+  );
 
   if (boese.length === 0) {
-    document.getElementById('inhalt').innerHTML = `<h3>🎉 Das Dorf gewinnt!</h3>`;
+    document.getElementById('spiel-inhalt').innerHTML = `<h2>🎉 Das Dorf gewinnt!</h2>`;
   } else if (boese.length >= gut.length) {
-    document.getElementById('inhalt').innerHTML = `<h3>🌑 Die Werwölfe gewinnen!</h3>`;
+    document.getElementById('spiel-inhalt').innerHTML = `<h2>🌑 Die Werwölfe gewinnen!</h2>`;
   } else {
-    aktuelleNacht++;
-    naechstePhase('nacht');
+    state.aktuelleNacht++;
+    starteNachtPhase();
   }
-  renderLebende();
+  renderLebendeSpieler();
 }
 
-function renderLebende() {
-  const div = document.getElementById('lebende');
-  div.innerHTML = '';
-  spieler.filter(p => p.lebend).forEach(p => {
-    const span = document.createElement('span');
-    span.className = 'spieler';
-    span.textContent = p.name;
-    div.appendChild(span);
+function renderLebendeSpieler() {
+  const container = document.getElementById('lebende-liste');
+  container.innerHTML = '';
+  state.spieler.filter(p => p.lebend).forEach(p => {
+    const div = document.createElement('div');
+    div.textContent = p.name;
+    container.appendChild(div);
   });
 }
 
 // Init
-updateNamen();
+updateNamenFelder();
 </script>
 
 </body>
