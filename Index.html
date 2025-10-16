@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🐺 Werwölfe von Düsterwald</title>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+    body { 
+      max-width: 900px; margin: 0 auto; padding: 20px; 
+      background: #f9f6f0; color: #333; 
+    }
+    h1, h2 { color: #5d4037; }
+    .section { background: white; padding: 15px; margin: 15px 0; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    input, button, select { padding: 8px; margin: 5px; font-size: 14px; }
+    button { background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:disabled { background: #cccccc; cursor: not-allowed; }
+    button.danger { background: #f44336; }
+    .rolle-btn { 
+      background: #e8f5e9; border: 1px solid #4caf50; 
+      margin: 4px; padding: 8px; border-radius: 4px; 
+      cursor: pointer; display: inline-block; min-width: 180px;
+    }
+    .rolle-btn.selected { background: #c8e6c9; font-weight: bold; }
+    .phase { display: none; }
+    .phase.active { display: block; }
+    .spieler-liste { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+    .spieler { background: #e3f2fd; padding: 6px; text-align: center; border-radius: 4px; }
+    .tot { opacity: 0.4; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+
+<h1>🐺 Werwölfe von Düsterwald</h1>
+
+<!-- SETUP PHASE -->
+<div id="phase-setup" class="phase active">
+  <div class="section">
+    <h2>1. Spielerzahl festlegen (6–48)</h2>
+    <input type="number" id="spielerzahl" min="6" max="48" value="24" />
+  </div>
+
+  <div class="section">
+    <h2>2. Namen eingeben</h2>
+    <div id="namen-container"></div>
+  </div>
+
+  <div class="section">
+    <h2>3. Rollen auswählen</h2>
+    <p>Gesamt: <span id="gesamt-anzahl">0</span> / <span id="ziel-anzahl">24</span></p>
+    <div id="rollen-buttons"></div>
+  </div>
+
+  <button id="btn-start-spiel" disabled>▶️ Spiel starten</button>
+</div>
+
+<!-- SPIEL PHASE -->
+<div id="phase-spiel" class="phase">
+  <div class="section">
+    <h2 id="phase-title">Nacht 1</h2>
+    <div id="nacht-inhalt"></div>
+    <button id="btn-naechste-phase" style="display:none;">Weiter</button>
+  </div>
+
+  <div class="section">
+    <h3>Lebende Spieler</h3>
+    <div id="lebende-spieler" class="spieler-liste"></div>
+  </div>
+</div>
+
+<script>
+// ===== DATENMODELL =====
+const ROLLEN = {
+  "einfache_werwoelfe": { name: "Einfache Werwölfe", team: "boese", istZweiSpieler: false },
+  "urwolf": { name: "Der Urwolf", team: "boese", istZweiSpieler: false },
+  "grosser_boeser_wolf": { name: "Der große, böse Wolf", team: "boese", istZweiSpieler: false },
+  "dorfbewohner": { name: "Einfache Dorfbewohner", team: "gut", istZweiSpieler: false },
+  "amor": { name: "Amor", team: "neutral_amor", istZweiSpieler: false },
+  "seherin": { name: "Die Seherin", team: "gut", istZweiSpieler: false },
+  "zwei_schwestern": { name: "Die zwei Schwestern", team: "gut", istZweiSpieler: true },
+  "kleines_maedchen": { name: "Das kleine Mädchen", team: "gut", istZweiSpieler: false },
+  "fuchs": { name: "Der Fuchs", team: "gut", istZweiSpieler: false },
+  "ritter": { name: "Der Ritter", team: "gut", istZweiSpieler: false },
+  "alte": { name: "Der Alte", team: "gut", istZweiSpieler: false },
+  "hexe": { name: "Die Hexe", team: "gut", istZweiSpieler: false },
+  "baerenfuehrer": { name: "Der Bärenführer", team: "gut", istZweiSpieler: false },
+  "jaeger": { name: "Der Jäger", team: "gut", istZweiSpieler: false },
+  "wilde_kind": { name: "Das wilde Kind", team: "gut_zuerst", istZweiSpieler: false },
+  "wolfshund": { name: "Der Wolfshund", team: "neutral_waehlt", istZweiSpieler: false },
+  "weisser_werwolf": { name: "Der weiße Werwolf", team: "boese_weiss", istZweiSpieler: false },
+  "floetenspieler": { name: "Der Flötenspieler", team: "neutral_floete", istZweiSpieler: false },
+  "engel": { name: "Der Engel", team: "gut", istZweiSpieler: false }
+};
+
+const EREIGNISSE = [
+  "Blutmond", "Nebel", "Liebesrausch", "Hexensabbat", "Schutzzauber",
+  "Verwirrung", "Todesstille", "Spiegelung", "Panik", "Frieden",
+  "Dunkelheit", "Fluch der Hexe", "Liebesfluch", "Trank der Verwandlung",
+  "Gesegnete Nacht", "Wolfsjagd", "Verdacht", "Dorfversammlung",
+  "Schicksalsnacht", "Racheengel", "Trunkenes Dorf", "Doppeltes Spiel",
+  "Mondfinsternis", "Heiliger Boden", "Fluch der Einsamkeit",
+  "Gestohlene Identität", "Stille Nacht", "Opfergabe", "Neumond"
+];
+
+// ===== SPIELZUSTAND =====
+let zustand = {
+  phase: 'setup', // 'setup', 'nacht', 'tag'
+  spielerzahl: 24,
+  spieler: [], // { id, name, rolle, lebend, mentor, team, ... }
+  rollenVerteilung: {},
+  aktuelleNacht: 1,
+  neumondAktiv: false,
+  ereignis: null,
+  werwolfOpfer: null,
+  grosserWolfOpfer: null,
+  kleinesMaedchenEntdeckt: false,
+  liebespaar: null,
+  wildeKindMentor: null,
+  wolfshundTeam: null
+};
+
+// ===== SETUP LOGIK =====
+document.getElementById('spielerzahl').addEventListener('input', updateNamenFelder);
+function updateNamenFelder() {
+  const n = parseInt(document.getElementById('spielerzahl').value) || 24;
+  zustand.spielerzahl = n;
+  document.getElementById('ziel-anzahl').textContent = n;
+  
+  const container = document.getElementById('namen-container');
+  container.innerHTML = '';
+  for (let i = 1; i <= n; i++) {
+    container.innerHTML += `<div><label>Spieler ${i}:</label> <input type="text" id="name-${i}" placeholder="Name" value="Spieler ${i}"></div>`;
+  }
+  updateGesamtAnzahl();
+}
+
+// Rollen-Buttons generieren
+const rollenBtns = document.getElementById('rollen-buttons');
+for (const key in ROLLEN) {
+  const btn = document.createElement('div');
+  btn.className = 'rolle-btn';
+  btn.dataset.rolle = key;
+  btn.textContent = `${ROLLEN[key].name} (0)`;
+  btn.onclick = () => {
+    zustand.rollenVerteilung[key] = (zustand.rollenVerteilung[key] || 0) + 1;
+    renderRollenButtons();
+    updateGesamtAnzahl();
+  };
+  rollenBtns.appendChild(btn);
+}
+
+function renderRollenButtons() {
+  for (const key in ROLLEN) {
+    const btn = document.querySelector(`[data-rolle="${key}"]`);
+    const anzahl = zustand.rollenVerteilung[key] || 0;
+    btn.textContent = `${ROLLEN[key].name} (${anzahl})`;
+    btn.classList.toggle('selected', anzahl > 0);
+  }
+}
+
+function updateGesamtAnzahl() {
+  let total = 0;
+  for (const key in zustand.rollenVerteilung) {
+    const anzahl = zustand.rollenVerteilung[key] || 0;
+    total += anzahl * (ROLLEN[key].istZweiSpieler ? 2 : 1);
+  }
+  document.getElementById('gesamt-anzahl').textContent = total;
+  document.getElementById('btn-start-spiel').disabled = (total !== zustand.spielerzahl);
+}
+
+document.getElementById('btn-start-spiel').addEventListener('click', starteSpiel);
+
+function starteSpiel() {
+  // Spielerliste erstellen
+  zustand.spieler = [];
+  let id = 1;
+  for (let i = 1; i <= zustand.spielerzahl; i++) {
+    const name = document.getElementById(`name-${i}`)?.value || `Spieler ${i}`;
+    zustand.spieler.push({ id, name, lebend: true, rolle: null });
+    id++;
+  }
+
+  // Rollen zuweisen
+  let spielerIndex = 0;
+  for (const rolleKey in zustand.rollenVerteilung) {
+    const anzahl = zustand.rollenVerteilung[rolleKey] || 0;
+    for (let i = 0; i < anzahl; i++) {
+      if (ROLLEN[rolleKey].istZweiSpieler) {
+        // Zwei Schwestern = 2 Spieler
+        if (spielerIndex < zustand.spieler.length) {
+          zustand.spieler[spielerIndex].rolle = rolleKey;
+          zustand.spieler[spielerIndex].team = ROLLEN[rolleKey].team;
+          spielerIndex++;
+        }
+        if (spielerIndex < zustand.spieler.length) {
+          zustand.spieler[spielerIndex].rolle = rolleKey;
+          zustand.spieler[spielerIndex].team = ROLLEN[rolleKey].team;
+          spielerIndex++;
+        }
+      } else {
+        if (spielerIndex < zustand.spieler.length) {
+          zustand.spieler[spielerIndex].rolle = rolleKey;
+          zustand.spieler[spielerIndex].team = ROLLEN[rolleKey].team;
+          spielerIndex++;
+        }
+      }
+    }
+  }
+
+  // Phase wechseln
+  document.getElementById('phase-setup').classList.remove('active');
+  document.getElementById('phase-spiel').classList.add('active');
+  starteNachtPhase();
+}
+
+// ===== SPIEL LOGIK =====
+function starteNachtPhase() {
+  zustand.phase = 'nacht';
+  document.getElementById('phase-title').textContent = `Nacht ${zustand.aktuelleNacht}`;
+  
+  // Ereignis ziehen (wenn Neumond aktiv)
+  if (zustand.neumondAktiv) {
+    const zufallsIndex = Math.floor(Math.random() * EREIGNISSE.length);
+    zustand.ereignis = EREIGNISSE[zufallsIndex];
+  } else {
+    zustand.ereignis = null;
+  }
+
+  // ===== NACHTABLAUF =====
+  let inhalt = `<p><strong>Nacht ${zustand.aktuelleNacht}</strong></p>`;
+  
+  if (zustand.ereignis) {
+    inhalt += `<p>🌙 Ereignis: <strong>${zustand.ereignis}</strong></p>`;
+  }
+
+  // Beispiel: Werwölfe
+  const werwoelfe = zustand.spieler.filter(p => 
+    p.lebend && 
+    ['einfache_werwoelfe', 'urwolf', 'grosser_boeser_wolf'].includes(p.rolle)
+  );
+  if (werwoelfe.length > 0) {
+    inhalt += `<p><strong>Werwölfe:</strong> Wählt ein Opfer.</p>`;
+    inhalt += `<select id="werwolf-opfer">`;
+    zustand.spieler.filter(p => p.lebend).forEach(p => {
+      inhalt += `<option value="${p.id}">${p.name}</option>`;
+    });
+    inhalt += `</select>`;
+  }
+
+  // Großer böser Wolf: jede 2. Nacht zweites Opfer
+  if (zustand.aktuelleNacht % 2 === 0) {
+    const grosserWolf = zustand.spieler.find(p => p.lebend && p.rolle === 'grosser_boeser_wolf');
+    if (grosserWolf) {
+      inhalt += `<p><strong>Großer böser Wolf:</strong> Wählt ein zweites Opfer.</p>`;
+      inhalt += `<select id="grosser-wolf-opfer">`;
+      zustand.spieler.filter(p => p.lebend).forEach(p => {
+        inhalt += `<option value="${p.id}">${p.name}</option>`;
+      });
+      inhalt += `</select>`;
+    }
+  }
+
+  // Kleines Mädchen: nach Werwölfen
+  const kleinesMaedchen = zustand.spieler.find(p => p.lebend && p.rolle === 'kleines_maedchen');
+  if (kleinesMaedchen) {
+    inhalt += `<p><strong>Kleines Mädchen:</strong> Hat es die Werwölfe beobachtet?</p>`;
+    inhalt += `<label><input type="radio" name="maedchen" value="nein" checked> Nein</label> `;
+    inhalt += `<label><input type="radio" name="maedchen" value="ja"> Ja (wurde entdeckt)</label>`;
+  }
+
+  document.getElementById('nacht-inhalt').innerHTML = inhalt;
+  document.getElementById('btn-naechste-phase').style.display = 'inline-block';
+  document.getElementById('btn-naechste-phase').onclick = verarbeiteNacht;
+  
+  // Lebende Spieler anzeigen
+  renderLebendeSpieler();
+}
+
+function verarbeiteNacht() {
+  // Opfer speichern
+  const wwSelect = document.getElementById('werwolf-opfer');
+  if (wwSelect) zustand.werwolfOpfer = parseInt(wwSelect.value);
+
+  const gwSelect = document.getElementById('grosser-wolf-opfer');
+  if (gwSelect) zustand.grosserWolfOpfer = parseInt(gwSelect.value);
+
+  const maedchenJa = document.querySelector('input[name="maedchen"]:checked')?.value === 'ja';
+  zustand.kleinesMaedchenEntdeckt = maedchenJa;
+
+  // Tode anwenden (vereinfacht)
+  if (zustand.werwolfOpfer) {
+    const opfer = zustand.spieler.find(p => p.id === zustand.werwolfOpfer);
+    if (opfer) opfer.lebend = false;
+  }
+  if (zustand.grosserWolfOpfer) {
+    const opfer = zustand.spieler.find(p => p.id === zustand.grosserWolfOpfer);
+    if (opfer) opfer.lebend = false;
+  }
+  if (zustand.kleinesMaedchenEntdeckt) {
+    const maedchen = zustand.spieler.find(p => p.rolle === 'kleines_maedchen');
+    if (maedchen) maedchen.lebend = false;
+  }
+
+  // Nächste Phase: Tag
+  starteTagPhase();
+}
+
+function starteTagPhase() {
+  zustand.phase = 'tag';
+  document.getElementById('phase-title').textContent = `Tag ${zustand.aktuelleNacht}`;
+  
+  let inhalt = `<p><strong>Tag ${zustand.aktuelleNacht}</strong></p>`;
+  
+  // Tote anzeigen
+  const tote = zustand.spieler.filter(p => !p.lebend);
+  if (tote.length > 0) {
+    inhalt += `<p>💀 Tote: ${tote.map(p => p.name).join(', ')}</p>`;
+  } else {
+    inhalt += `<p>Keine Toten in der Nacht.</p>`;
+  }
+
+  // Hinrichtung
+  inhalt += `<p><strong>Hinrichtung:</strong> Wen beschuldigt das Dorf?</p>`;
+  inhalt += `<select id="hinrichtung">`;
+  zustand.spieler.filter(p => p.lebend).forEach(p => {
+    inhalt += `<option value="${p.id}">${p.name}</option>`;
+  });
+  inhalt += `</select>`;
+  inhalt += `<button id="btn-hinrichten">Hinrichten</button>`;
+
+  document.getElementById('nacht-inhalt').innerHTML = inhalt;
+  document.getElementById('btn-naechste-phase').style.display = 'none';
+  
+  document.getElementById('btn-hinrichten').onclick = () => {
+    const id = parseInt(document.getElementById('hinrichtung').value);
+    const opfer = zustand.spieler.find(p => p.id === id);
+    if (opfer) opfer.lebend = false;
+    
+    // Prüfe Siegbedingungen (vereinfacht)
+    const lebendeBoese = zustand.spieler.filter(p => 
+      p.lebend && 
+      ['boese', 'boese_weiss'].includes(ROLLEN[p.rolle]?.team)
+    );
+    const lebendeGut = zustand.spieler.filter(p => 
+      p.lebend && 
+      ROLLEN[p.rolle]?.team?.startsWith('gut')
+    );
+    
+    if (lebendeBoese.length === 0) {
+      document.getElementById('nacht-inhalt').innerHTML = `<h3>🎉 Das Dorf gewinnt!</h3>`;
+    } else if (lebendeBoese.length >= lebendeGut.length) {
+      document.getElementById('nacht-inhalt').innerHTML = `<h3>🌑 Die Werwölfe gewinnen!</h3>`;
+    } else {
+      zustand.aktuelleNacht++;
+      starteNachtPhase();
+    }
+    renderLebendeSpieler();
+  };
+
+  renderLebendeSpieler();
+}
+
+function renderLebendeSpieler() {
+  const container = document.getElementById('lebende-spieler');
+  container.innerHTML = '';
+  zustand.spieler.forEach(p => {
+    const div = document.createElement('div');
+    div.className = `spieler ${p.lebend ? '' : 'tot'}`;
+    div.textContent = p.name;
+    container.appendChild(div);
+  });
+}
+
+// Init
+updateNamenFelder();
+</script>
+
+</body>
+</html>
